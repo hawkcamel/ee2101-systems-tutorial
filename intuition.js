@@ -1,0 +1,63 @@
+'use strict';
+(function(){
+ const n=x=>Math.abs(x)<1e-9?'0':Number(x.toPrecision(4)).toString();
+ function pairValue(kind,A,a,b,T,t){if(t<0)return 0;switch(kind){case'exp':return A*Math.exp(a*t);case'sin':return A*Math.exp(a*t)*Math.sin(b*t);case'cos':return A*Math.exp(a*t)*Math.cos(b*t);case'ramp':return A*t;case'delay':return t>=T?A:0;case'impulse':return 0;default:return A;}}
+ function sampleValue(kind,t){if(t<-5||t>5)return 0;return kind==='sine'?Math.sin(Math.PI*t/2):kind==='triangle'?Math.max(0,1-Math.abs(t)/3):Math.exp(-t*t/4);}
+ function bins(kind,dt){return Array.from({length:Math.round(10/dt)},(_,i)=>{const t=-5+(i+.5)*dt,f=sampleValue(kind,t);return {t,f,w:f*dt,dt};});}
+ function sumResponse(bs,t){return bs.reduce((s,q)=>s+(t>=q.t?q.w*Math.exp(-(t-q.t)):0),0);}
+ function exactResponse(kind,t){const end=Math.min(5,t);if(end<=-5)return 0;const N=2400,dt=(end+5)/N;let sum=0;for(let i=0;i<N;i++){const q=-5+(i+.5)*dt;sum+=sampleValue(kind,q)*Math.exp(-(t-q))*dt;}return sum;}
+ if(typeof module!=='undefined')module.exports={pairValue,sampleValue,bins,sumResponse,exactResponse};
+ if(typeof document==='undefined')return;
+ const $=id=>document.getElementById(id),num=id=>Number($(id).value),R=String.raw;
+ const math=(id,tex)=>katex.render(tex,$(id),{displayMode:true,throwOnError:false});
+ const txt=(x,y,s,c='#526b64',anchor='middle')=>`<text x="${x}" y="${y}" fill="${c}" text-anchor="${anchor}" font-size="14">${s}</text>`;
+ const line=(x1,y1,x2,y2,c='#dae3db')=>`<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${c}"/>`;
+ const points=(f,lo,hi,count=400)=>Array.from({length:count+1},(_,i)=>{let t=lo+(hi-lo)*i/count;return[t,f(t)]});
+ function plot(id,series,lo,hi,label='time t / s',extra=[]){const all=series.flatMap(q=>q.data.map(p=>p[1])).concat(extra),min=Math.min(0,...all),max=Math.max(1,...all),pad=.1*(max-min),X=t=>55+(t-lo)/(hi-lo)*555,Y=v=>230-(v-min+pad)/(max-min+2*pad)*200;let h='';for(let i=0;i<=4;i++){let t=lo+(hi-lo)*i/4,v=min+(max-min)*i/4;h+=line(X(t),25,X(t),230)+line(55,Y(v),610,Y(v))+txt(X(t),252,n(t))+txt(48,Y(v)+4,n(v),'#526b64','end');}h+=txt(335,278,label);for(const s of series){let d=s.data.map((p,i)=>(i?'L':'M')+X(p[0])+','+Y(p[1])).join(' ');h+=`<path d="${d}" fill="none" stroke="${s.c}" stroke-width="${s.width||2.3}" ${s.dash?'stroke-dasharray="6 4"':''}/>`;}$ (id).innerHTML=h;return{X,Y};}
+ function wire(ids,fn){ids.forEach(id=>$(id).addEventListener('input',fn));}
+ if($('pairKind')){
+  let a=-1,b=2;const A=()=>num('pairAmp'),kind=()=>$('pairKind').value;
+  function drawPair(){let k=kind(),amp=A(),T=num('pairDelay'),osc=k==='sin'||k==='cos',movable=k==='exp'||osc;
+   $('poleControls').hidden=!movable;$('envelopeControls').hidden=!movable;$('periodControl').hidden=!osc;$('imagControl').hidden=!osc;$('delayControl').hidden=k!=='delay';
+   $('pairReal').value=a;$('pairImag').value=b;$('pairEnvelope').value=Math.exp(a);$('pairPeriod').value=(2*Math.PI/b).toFixed(4);
+   $('pairPoleHelp').textContent=movable?'Drag a cross in the s-plane, or use the pole controls. For a conjugate pair, both crosses move together.':k==='impulse'?'A constant transform has no poles. The arrow in time is labelled by its area.':k==='delay'?'Changing the delay does not move the pole at zero. The delay appears in the factor e^(−sT).':'The pole stays at zero for this pair. Change the amplitude to see what changes in the formula.';
+   const base=R`(s-(${n(a)}))`,time={exp:R`${n(amp)}e^{${n(a)}t}u(t)`,sin:R`${n(amp)}e^{${n(a)}t}\sin(${n(b)}t)u(t)`,cos:R`${n(amp)}e^{${n(a)}t}\cos(${n(b)}t)u(t)`,step:R`${n(amp)}u(t)`,ramp:R`${n(amp)}t\,u(t)`,delay:R`${n(amp)}u(t-${n(T)})`,impulse:R`${n(amp)}\delta(t)`}[k];
+   const transform={exp:R`\frac{${n(amp)}}{${base}}`,sin:R`\frac{${n(amp*b)}}{${base}^2+${n(b*b)}}`,cos:R`\frac{${n(amp)}${base}}{${base}^2+${n(b*b)}}`,step:R`\frac{${n(amp)}}s`,ramp:R`\frac{${n(amp)}}{s^2}`,delay:R`\frac{${n(amp)}e^{-${n(T)}s}}s`,impulse:n(amp)}[k];
+   math('pairTimeEq',R`x(t)=${time}`);math('pairSEq',R`X(s)=${transform}`);
+   $('pairROC').textContent=k==='impulse'?'ROC: all finite s.':`ROC: Re(s) > ${n(movable?a:0)}. The signal is zero for t < 0.`;
+   let series=[{data:points(t=>pairValue(k,amp,a,b,T,t),0,8),c:'#087e78'}];if(osc)series.push(...[1,-1].map(sign=>({data:points(t=>sign*amp*Math.exp(a*t),0,8),c:'#9aa99f',dash:true})));
+   if(k==='delay')series=[{data:[[0,0],[T,0],[T,amp],[8,amp]],c:'#087e78'}];
+   const co=plot('pairTimePlot',series,0,8);if(k==='impulse')$('pairTimePlot').innerHTML+=`<path d="M${co.X(0)},${co.Y(0)}V45m-6,9l6,-9l6,9" fill="none" stroke="#087e78" stroke-width="3"/>`+txt(135,42,'area = '+n(amp),'#087e78');
+   let X=r=>210+r*60,Y=i=>175-i*25,h='';let bound=movable?a:0;if(k!=='impulse')h+=`<rect x="${X(bound)}" y="20" width="${450-X(bound)}" height="300" fill="#e8f2e8"/>`+line(X(bound),20,X(bound),320,'#8b59b5');
+   for(let r=-3;r<=3;r++){h+=line(X(r),20,X(r),320,r?'#dce4db':'#71837a')+txt(X(r),343,r);}for(let i=-6;i<=6;i+=2){h+=line(30,Y(i),450,Y(i),i?'#dce4db':'#71837a')+txt(24,Y(i)+4,i+'j','#526b64','end');}
+   h+=txt(420,165,'Re(s)')+txt(240,16,'Im(s)');if(k!=='impulse')h+=txt(395,36,'ROC','#087e78');
+   let poles=movable?(osc?[[a,b],[a,-b]]:[[a,0]]):k==='impulse'?[]:[[0,0]];
+   poles.forEach(([r,i])=>{let x=X(r),y=Y(i);h+=`<path d="M${x-7},${y-7}l14,14m-14,0l14,-14" stroke="#cc694a" stroke-width="3"/>`;});
+   if(k==='cos')h+=`<circle cx="${X(a)}" cy="${Y(0)}" r="7" fill="none" stroke="#087e78" stroke-width="2"/>`;
+   if(k==='ramp')h+=txt(X(0)+14,Y(0)-18,'double pole','#cc694a','start');
+   $('pairPlane').innerHTML=h;
+   const explanation=movable?`The real part ${n(a)} sets the envelope: after one second it is multiplied by ${n(Math.exp(a))}. ${a<0?'A pole farther left gives faster decay.':a>0?'A pole on the right gives a growing signal.':'At zero real part, the envelope stays constant.'} ${osc?`The imaginary parts ±${n(b)} set the oscillation frequency. The period is ${n(2*Math.PI/b)} s. The grey dashed curves show the envelope.`:''}`:k==='ramp'?'A ramp has a double pole at zero. Compare it with the step: the pole location is the same, but the repeated factor 1/s gives a different time signal.':k==='delay'?'The whole step shifts to the right by T seconds. Its pole stays at zero; the exponential factor records the delay. Pole locations alone do not specify a transform.':k==='impulse'?'Multiplying the impulse area by A multiplies its transform by A. The arrow does not represent a finite pulse height.':'A step stays at a constant value after t = 0. Its transform has one pole at zero.';
+   $('pairMeaning').textContent=explanation;math('pairTimeParameters',movable?R`\text{envelope ratio after 1 s}=e^{${n(a)}}=${n(Math.exp(a))}${osc?R`,\quad T_0=\frac{2\pi}{${n(b)}}=${n(2*Math.PI/b)}\ \mathrm{s}`:''}`:R`A=${n(amp)}${k==='delay'?R`,\quad T=${n(T)}\ \mathrm{s}`:''}`);
+  }
+  wire(['pairAmp','pairDelay'],drawPair);
+  $('pairKind').addEventListener('input',()=>{if(kind()==='sin'||kind()==='cos'){a=-.4;b=2;}else a=-1;drawPair();});
+  $('pairReal').addEventListener('input',()=>{a=num('pairReal');drawPair();});$('pairImag').addEventListener('input',()=>{b=num('pairImag');drawPair();});
+  $('pairEnvelope').addEventListener('input',()=>{a=Math.log(num('pairEnvelope'));drawPair();});$('pairPeriod').addEventListener('input',()=>{let t=num('pairPeriod');if(t>=2*Math.PI/5&&t<=2*Math.PI/.2){b=2*Math.PI/t;drawPair();}});
+  let dragging=false;const svg=$('pairPlane');svg.addEventListener('pointerdown',e=>{if(!['exp','sin','cos'].includes(kind()))return;let p=svg.createSVGPoint();p.x=e.clientX;p.y=e.clientY;p=p.matrixTransform(svg.getScreenCTM().inverse());let imag=kind()==='exp'?0:Math.abs(b);if(Math.hypot(p.x-(210+a*60),Math.abs(p.y-175)-imag*25)>24)return;dragging=true;svg.setPointerCapture(e.pointerId);});
+  svg.addEventListener('pointermove',e=>{if(!dragging)return;let p=svg.createSVGPoint();p.x=e.clientX;p.y=e.clientY;p=p.matrixTransform(svg.getScreenCTM().inverse());a=Math.max(-3,Math.min(1,(p.x-210)/60));if(kind()!=='exp')b=Math.max(.2,Math.min(5,Math.abs(175-p.y)/25));drawPair();});['pointerup','pointercancel'].forEach(evt=>svg.addEventListener(evt,()=>dragging=false));drawPair();
+ }
+ if($('lookupKind')){
+  function drawLookup(){const kind=$('lookupKind').value,dt=num('lookupStep'),bs=bins(kind,dt);$('lookupIndex').max=bs.length-1;let idx=Math.min(bs.length-1,num('lookupIndex'));$('lookupIndex').value=idx;const q=bs[idx],width=num('pulseWidth'),outTime=num('lookupOutputTime');
+   const stair=[];bs.forEach(q=>stair.push([q.t-dt/2,q.f],[q.t+dt/2,q.f]));const c=plot('lookupPlot',[{data:points(t=>sampleValue(kind,t),-5,5),c:'#9aa99f'},{data:stair,c:'#087e78'}],-5,5,'sample time / s');$('lookupPlot').innerHTML+=`<rect x="${c.X(q.t-dt/2)}" y="${Math.min(c.Y(0),c.Y(q.f))}" width="${c.X(q.t+dt/2)-c.X(q.t-dt/2)}" height="${Math.abs(c.Y(q.f)-c.Y(0))}" fill="#8b59b5" opacity=".25"/><circle cx="${c.X(q.t)}" cy="${c.Y(q.f)}" r="5" fill="#8b59b5"/>`;
+   $('lookupTable').innerHTML='<thead><tr><th>Time tₖ</th><th>Value f(tₖ)</th><th>Area f(tₖ)Δt</th></tr></thead><tbody>'+bs.map((r,i)=>`<tr ${i===idx?'class="selected-row"':''}><td><button type="button" data-row="${i}" aria-label="Select sample ${i+1} at ${n(r.t)} seconds">${n(r.t)}</button></td><td>${n(r.f)}</td><td>${n(r.w)}</td></tr>`).join('')+'</tbody>';
+   $('lookupTable').querySelectorAll('button').forEach(el=>el.onclick=()=>{$('lookupIndex').value=el.dataset.row;drawLookup();});
+   math('lookupWeight',R`f(${n(q.t)})=${n(q.f)},\quad w_k=f(t_k)\Delta t=${n(q.f)}\times${n(dt)}=${n(q.w)}`);
+   const ic=plot('lookupImpulses',[{data:[[-5,0],[5,0]],c:'#9aa99f'}],-5,5,'impulse position / s',bs.map(q=>q.w));bs.forEach((r,i)=>{let x=ic.X(r.t),y=ic.Y(r.w),color=i===idx?'#8b59b5':'#087e78',sign=r.w<0?-1:1;$('lookupImpulses').innerHTML+=`<path d="M${x},${ic.Y(0)}V${y}m-4,${sign*6}l4,${-sign*6}l4,${sign*6}" stroke="${color}" fill="none" stroke-width="${i===idx?3:1.5}"/>`;});
+   $('lookupSelected').textContent=`Selected impulse: time ${n(q.t)} s, area ${n(q.w)}. Arrow lengths indicate signed areas, not pulse heights.`;
+   plot('lookupPulse',[{data:[[q.t-1,0],[q.t-width/2,0],[q.t-width/2,q.w/width],[q.t+width/2,q.w/width],[q.t+width/2,0],[q.t+1,0]],c:'#8b59b5'}],q.t-1,q.t+1,'time / s');
+   math('lookupPulseEq',R`\text{width}=\varepsilon=${n(width)},\quad\text{height}=\frac{w_k}{\varepsilon}=${n(q.w/width)},\quad\text{area}=${n(q.w)}`);
+   const reference=points(t=>exactResponse(kind,t),-5,8,240),approx=points(t=>sumResponse(bs,t),-5,8,700);plot('lookupOutput',[{data:reference,c:'#213d3a',dash:true},{data:approx,c:'#087e78'},{data:points(t=>t<q.t?0:q.w*Math.exp(-(t-q.t)),-5,8),c:'#8b59b5'}],-5,8,'output time t / s');
+   math('lookupOutputEq',R`\begin{aligned}y_{\Delta t}(${n(outTime)})&=\sum_k w_k h(${n(outTime)}-t_k)=${n(sumResponse(bs,outTime))}\\y(${n(outTime)})&\approx ${n(exactResponse(kind,outTime))}\quad\text{(numerical integral)}\end{aligned}`);
+  }wire(['lookupKind','lookupStep','lookupIndex','pulseWidth','lookupOutputTime'],drawLookup);drawLookup();
+ }
+})();
