@@ -1,6 +1,6 @@
 # EE2101: Tutorial on Frequency Response
 
-Ten interactive lessons covering transfer functions, complex numbers, frequency response, LTI systems, impulses, convolution, system responses, Laplace transforms, phasors, and sinusoidal steady-state circuit analysis.
+Eleven interactive lessons covering transfer functions, complex numbers, frequency response, LTI systems, impulses, convolution, system responses, Fourier synthesis, Laplace transforms, phasors, and sinusoidal steady-state circuit analysis.
 
 ## Publish with GitHub Pages
 
