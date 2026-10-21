@@ -1,0 +1,16 @@
+'use strict';
+/* Ideal two-branch divider, coefficients in ascending powers of s. */
+(function(root){
+const add=(a,b)=>Array.from({length:Math.max(a.length,b.length)},(_,i)=>(a[i]||0)+(b[i]||0));
+const mul=(a,b)=>{const c=Array(a.length+b.length-1).fill(0);a.forEach((x,i)=>b.forEach((y,j)=>c[i+j]+=x*y));return c};
+function clean(a){while(a.length>1&&a.at(-1)===0)a.pop();return a}
+const series=(a,b)=>({n:add(mul(a.n,b.d),mul(b.n,a.d)),d:mul(a.d,b.d)});
+const parallel=(a,b)=>({n:mul(a.n,b.n),d:add(mul(a.n,b.d),mul(b.n,a.d))});
+function impedance(c){if(!(c.v>0&&Number.isFinite(c.v)))throw Error('Every active component needs a finite, positive value.');return c.type==='R'?{n:[c.v],d:[1]}:c.type==='C'?{n:[1],d:[0,c.v]}:{n:[0,c.v],d:[1]}}
+function branch(list,mode){if(!list.length)throw Error('Place at least one component in each branch. Empty branches are not treated as wires.');return list.map(impedance).reduce(mode==='parallel'?parallel:series)}
+function model(list,modes){for(const t of ['R','C','L'])if(list.filter(c=>c.type===t).length>2)throw Error('Use at most two resistors, two capacitors and two inductors.');let z1=branch(list.filter(c=>c.branch===1),modes[0]),z2=branch(list.filter(c=>c.branch===2),modes[1]);let n=clean(mul(z2.n,z1.d)),d=clean(add(mul(z1.n,z2.d),mul(z2.n,z1.d)));while(n.length>1&&d.length>1&&n[0]===0&&d[0]===0){n.shift();d.shift()}let scale=d.find(x=>x!==0);n=n.map(x=>x/scale);d=d.map(x=>x/scale);return {n,d,z1,z2}}
+function peval(p,w){let re=0,im=0;for(let k=p.length-1;k>=0;k--){let a=re;re=-im*w+p[k];im=a*w}return {re,im}}
+function response(m,w){let a=peval(m.n,w),b=peval(m.d,w),q=b.re*b.re+b.im*b.im;if(!q)return {mag:NaN,phase:NaN,re:NaN,im:NaN};let re=(a.re*b.re+a.im*b.im)/q,im=(a.im*b.re-a.re*b.im)/q;return {re,im,mag:Math.hypot(re,im),phase:Math.atan2(im,re)*180/Math.PI}}
+function crossings(m,reference,lo=10,hi=1e7){if(!(reference>0&&Number.isFinite(reference)))return [];const target=reference/Math.sqrt(2),out=[];let prev=lo,y=response(m,2*Math.PI*prev).mag-target;for(let i=1;i<=2400;i++){let f=lo*(hi/lo)**(i/2400),v=response(m,2*Math.PI*f).mag-target;if(Number.isFinite(v)&&Number.isFinite(y)&&y*v<0){let a=prev,b=f,ya=y;for(let j=0;j<55;j++){let c=Math.sqrt(a*b),yc=response(m,2*Math.PI*c).mag-target;if(ya*yc<=0)b=c;else{a=c;ya=yc}}out.push(Math.sqrt(a*b))}prev=f;y=v}return out}
+const api={model,response,crossings,add,mul};if(typeof module!=='undefined')module.exports=api;else root.AlphaEngine=api;
+})(typeof window==='undefined'?{}:window);
