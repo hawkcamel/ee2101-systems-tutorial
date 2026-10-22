@@ -13,5 +13,19 @@ function peval(p,w){let re=0,im=0;for(let k=p.length-1;k>=0;k--){let a=re;re=-im
 function response(m,w){let a=peval(m.n,w),b=peval(m.d,w),q=b.re*b.re+b.im*b.im;if(!q)return {mag:NaN,phase:NaN,re:NaN,im:NaN};let re=(a.re*b.re+a.im*b.im)/q,im=(a.im*b.re-a.re*b.im)/q;return {re,im,mag:Math.hypot(re,im),phase:Math.atan2(im,re)*180/Math.PI}}
 function crossings(m,reference,lo=10,hi=1e7){if(!(reference>0&&Number.isFinite(reference)))return [];const target=reference/Math.sqrt(2),out=[];let prev=lo,y=response(m,2*Math.PI*prev).mag-target;for(let i=1;i<=2400;i++){let f=lo*(hi/lo)**(i/2400),v=response(m,2*Math.PI*f).mag-target;if(Number.isFinite(v)&&Number.isFinite(y)&&y*v<0){let a=prev,b=f,ya=y;for(let j=0;j<55;j++){let c=Math.sqrt(a*b),yc=response(m,2*Math.PI*c).mag-target;if(ya*yc<=0)b=c;else{a=c;ya=yc}}out.push(Math.sqrt(a*b))}prev=f;y=v}return out}
 function square(m,f,amplitude,t){if(m.d.length>2||m.n.length>2||!(m.d[0]>0&&m.d[1]>0))throw Error('Square-wave mode requires a stable first-order circuit. Use a sine wave for this configuration.');let tau=m.d[1]/m.d[0],k=m.n[0]/m.d[0],direct=(m.n[1]||0)/m.d[1],half=1/(2*f),e=Math.exp(-half/tau),q0=-amplitude*(1-e)/(1+e),phase=((t%(2*half))+2*half)%(2*half),positive=phase<half,local=positive?phase:phase-half,x=positive?amplitude:-amplitude,qStart=positive?q0:-q0,q=x+(qStart-x)*Math.exp(-local/tau);return {x,y:direct*x+(k-direct)*q}}
-const api={model,response,crossings,square,add,mul};if(typeof module!=='undefined')module.exports=api;else root.AlphaEngine=api;
+// Exact state transition of a proper rational transfer function. Time is scaled
+// before building the companion matrix to avoid mixing large SI coefficients.
+function transient(m,duration,count=1001){
+ if(!(duration>0&&Number.isFinite(duration)))throw Error('Enter a positive time window.');
+ const n=m.d.length-1;if(m.n.length>m.d.length)throw Error('This ideal circuit has an improper transfer function; ordinary step and impulse curves are not available.');
+ if(!n){let D=m.n[0]/m.d[0];return {direct:D,data:Array.from({length:count},(_,i)=>({t:i*duration/(count-1),step:D,impulse:0}))}}
+ const rate=Math.max(...m.d.slice(0,n).map((v,i)=>Math.pow(Math.abs(v/m.d[n]),1/(n-i))));
+ const T=rate>0?1/rate:duration,den=m.d.map((v,i)=>v/T**i),lead=den[n],a=den.map(v=>v/lead),b=Array.from({length:n+1},(_,i)=>(m.n[i]||0)/T**i/lead),D=b[n],C=b.slice(0,n).map((v,i)=>v-D*a[i]);
+ const size=n+1,zero=()=>Array.from({length:size},()=>Array(size).fill(0)),identity=()=>zero().map((r,i)=>(r[i]=1,r)),mm=(A,B)=>A.map(r=>B[0].map((_,j)=>r.reduce((s,v,k)=>s+v*B[k][j],0))),mv=(A,x)=>A.map(r=>r.reduce((s,v,k)=>s+v*x[k],0));
+ let A=zero();for(let i=0;i<n-1;i++)A[i][i+1]=1;for(let i=0;i<n;i++)A[n-1][i]=-a[i];A[n-1][n]=1;
+ let dt=duration/(count-1)/T,M=A.map(r=>r.map(v=>v*dt)),norm=Math.max(...M.map(r=>r.reduce((s,v)=>s+Math.abs(v),0))),scale=Math.max(0,Math.ceil(Math.log2(norm||1)));M=M.map(r=>r.map(v=>v/2**scale));let E=identity(),term=identity();for(let k=1;k<=40;k++){term=mm(term,M).map(r=>r.map(v=>v/k));E=E.map((r,i)=>r.map((v,j)=>v+term[i][j]));if(Math.max(...term.flat().map(Math.abs))<1e-17)break}for(let i=0;i<scale;i++)E=mm(E,E);
+ let step=Array(size).fill(0),imp=Array(size).fill(0);step[n]=1;imp[n-1]=1/T;const data=[];
+ for(let i=0;i<count;i++){let ys=D+C.reduce((s,v,j)=>s+v*step[j],0),yi=C.reduce((s,v,j)=>s+v*imp[j],0);if(!Number.isFinite(ys)||!Number.isFinite(yi))throw Error('Response exceeds the numerical range. Use a shorter time window.');data.push({t:i*duration/(count-1),step:ys,impulse:yi});step=mv(E,step);imp=mv(E,imp)}return {direct:D,data};
+}
+const api={model,response,crossings,square,transient,add,mul};if(typeof module!=='undefined')module.exports=api;else root.AlphaEngine=api;
 })(typeof window==='undefined'?{}:window);
