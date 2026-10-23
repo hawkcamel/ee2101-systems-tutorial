@@ -1,6 +1,6 @@
 # EE2101: Tutorial on Frequency Response
 
-Eleven interactive lessons covering transfer functions, complex numbers, frequency response, LTI systems, impulses, convolution, system responses, Fourier synthesis, Laplace transforms, phasors, and sinusoidal steady-state circuit analysis.
+Twelve interactive lessons in five parts: complex numbers; phasors and AC circuit analysis; systems, impulses and convolution; Fourier, Laplace, poles and zeros, frequency response and output prediction; and a circuit playground for building and testing classic RC, RL and RLC filters.
 
 ## Publish with GitHub Pages
 
@@ -10,7 +10,7 @@ The published address will be https://hawkcamel.github.io/ee2101-systems-tutoria
 
 ## Files and updates
 
-This is a static HTML/CSS/JavaScript site; no build step or package installation is required. `index.html` is the first lesson. Keep `vendor/` with the site: it contains KaTeX and its fonts and license. The `.nojekyll` file tells GitHub Pages to serve the files directly.
+This is a static HTML/CSS/JavaScript site; no build step or package installation is required. `index.html` is the home page with the course map; lesson 1 is `complex.html`. Keep `vendor/` with the site: it contains KaTeX and its fonts and license. The `.nojekyll` file tells GitHub Pages to serve the files directly.
 
 Edit the lesson HTML or shared scripts/styles and commit to `main` to update the site. Internal lesson links use `.html` filenames for GitHub Pages compatibility.
 
